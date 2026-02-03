@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { Connectors } = require('shoukaku');
+const { Shoukaku, Connectors } = require('shoukaku');
 const { Kazagumo } = require('kazagumo');
 const express = require('express');
 require('dotenv').config();
@@ -31,18 +31,33 @@ const Nodes = [
     }
 ];
 
-// ============ KAZAGUMO v3.x SETUP ============
-const kazagumo = new Kazagumo({
-    defaultSearchEngine: 'youtube',
-    send: (guildId, payload) => {
-        const guild = client.guilds.cache.get(guildId);
-        if (guild) guild.shard.send(payload);
-    }
-}, new Connectors.DiscordJS(client), Nodes);
+// ============ SHOUKAKU OPTIONS ============
+const shoukakuOptions = {
+    moveOnDisconnect: false,
+    resumable: false,
+    resumableTimeout: 30,
+    reconnectTries: 2,
+    restTimeout: 10000
+};
+
+// ============ KAZAGUMO v3.x SETUP (FIXED!) ============
+const kazagumo = new Kazagumo(
+    {
+        defaultSearchEngine: 'youtube',
+        send: (guildId, payload) => {
+            const guild = client.guilds.cache.get(guildId);
+            if (guild) guild.shard.send(payload);
+        }
+    },
+    new Connectors.DiscordJS(client),
+    Nodes,
+    shoukakuOptions
+);
 
 // ============ EVENTS ============
 kazagumo.shoukaku.on('ready', (name) => console.log(`✅ Lavalink ${name} connected!`));
 kazagumo.shoukaku.on('error', (name, error) => console.error(`❌ Lavalink ${name} error:`, error));
+kazagumo.shoukaku.on('close', (name, code, reason) => console.warn(`⚠️ Lavalink ${name} closed: ${code} - ${reason}`));
 
 kazagumo.on('playerStart', (player, track) => {
     const channel = client.channels.cache.get(player.textId);
@@ -55,9 +70,16 @@ kazagumo.on('playerEmpty', (player) => {
     player.destroy();
 });
 
+kazagumo.on('playerError', (player, error) => {
+    console.error('Player error:', error);
+    const channel = client.channels.cache.get(player.textId);
+    if (channel) channel.send('❌ Error saat memutar lagu!');
+});
+
 // ============ BOT READY ============
 client.once('ready', () => {
     console.log(`🤖 ${client.user.tag} is online!`);
+    console.log(`📊 Serving ${client.guilds.cache.size} servers`);
 });
 
 // ============ COMMANDS ============
