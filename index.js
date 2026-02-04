@@ -4,19 +4,29 @@ const { Kazagumo } = require('kazagumo');
 const express = require('express');
 require('dotenv').config();
 
+// ============ BOT INFO ============
+const BOT_INFO = {
+    name: 'Melodify',
+    version: '1.0.0',
+    description: 'HI i am development .',
+    owner: {
+        id: '1307489983359357019',
+        username: 'demisz_dc',
+        display: 'Demisz'
+    },
+    color: '#5865F2',
+    links: {
+        support: 'https://discord.gg/your-server',
+        invite: 'https://discord.com/oauth2/authorize?client_id=1307489983359357019&permissions=3147776&scope=bot'
+    }
+};
+
 // ============ EXPRESS KEEP-ALIVE ============
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => res.status(200).send('OK'));
 app.get('/ping', (req, res) => res.status(200).send('OK'));
-app.get('/status', (req, res) => {
-    res.status(200).json({
-        status: 'online',
-        uptime: Math.floor(process.uptime()),
-        servers: client.guilds.cache.size
-    });
-});
 
 app.listen(PORT, () => console.log(`🌐 Server running on port ${PORT}`));
 
@@ -33,27 +43,12 @@ const client = new Client({
 // ============ LAVALINK NODES ============
 const Nodes = [
     {
-        name: 'Serenetia',
+        name: 'Main',
         url: 'lavalinkv4.serenetia.com:443',
         auth: 'https://dsc.gg/ajidevserver',
         secure: true
-    },
-    {
-        name: 'Serenetia-Backup',
-        url: 'lavalinkv4.serenetia.com:80',
-        auth: 'https://dsc.gg/ajidevserver',
-        secure: false
     }
 ];
-
-// ============ SHOUKAKU OPTIONS ============
-const shoukakuOptions = {
-    moveOnDisconnect: false,
-    resumable: false,
-    resumableTimeout: 30,
-    reconnectTries: 3,
-    restTimeout: 15000
-};
 
 // ============ KAZAGUMO SETUP ============
 const kazagumo = new Kazagumo(
@@ -66,54 +61,43 @@ const kazagumo = new Kazagumo(
     },
     new Connectors.DiscordJS(client),
     Nodes,
-    shoukakuOptions
+    { moveOnDisconnect: false, resumable: false, reconnectTries: 3, restTimeout: 15000 }
 );
 
 // ============ LAVALINK EVENTS ============
-kazagumo.shoukaku.on('ready', (name) => {
-    console.log(`✅ Lavalink ${name} connected!`);
-});
-
-kazagumo.shoukaku.on('error', (name, error) => {
-    console.error(`❌ Lavalink ${name} error:`, error);
-});
-
-kazagumo.shoukaku.on('close', (name, code, reason) => {
-    console.warn(`⚠️ Lavalink ${name} closed: ${code} - ${reason}`);
-});
-
-kazagumo.shoukaku.on('disconnect', (name, reason) => {
-    console.warn(`⚠️ Lavalink ${name} disconnected:`, reason);
-});
+kazagumo.shoukaku.on('ready', (name) => console.log(`✅ Lavalink ${name} connected!`));
+kazagumo.shoukaku.on('error', (name, error) => console.error(`❌ Lavalink ${name} error:`, error));
 
 // ============ PLAYER EVENTS ============
 kazagumo.on('playerStart', (player, track) => {
     const channel = client.channels.cache.get(player.textId);
-    if (channel) {
-        const embed = new EmbedBuilder()
-            .setColor('#00ff00')
-            .setTitle('🎵 Now Playing')
-            .setDescription(`**${track.title}**`)
-            .addFields(
-                { name: '👤 Author', value: track.author || 'Unknown', inline: true },
-                { name: '⏱️ Duration', value: formatDuration(track.length), inline: true },
-                { name: '🎧 Requested by', value: `${track.requester}`, inline: true }
-            )
-            .setThumbnail(track.thumbnail || null)
-            .setTimestamp();
-        
-        channel.send({ embeds: [embed] });
-    }
-});
+    if (!channel) return;
 
-kazagumo.on('playerEnd', (player) => {
-    console.log(`Player ended in guild ${player.guildId}`);
+    const embed = new EmbedBuilder()
+        .setColor(BOT_INFO.color)
+        .setAuthor({ name: 'Now Playing 🎵', iconURL: client.user.displayAvatarURL() })
+        .setTitle(track.title)
+        .setURL(track.uri)
+        .setThumbnail(track.thumbnail || null)
+        .addFields(
+            { name: 'Duration', value: formatDuration(track.length), inline: true },
+            { name: 'Author', value: track.author || 'Unknown', inline: true },
+            { name: 'Requested by', value: `${track.requester}`, inline: true }
+        )
+        .setFooter({ text: `Volume: ${player.volume}%  •  ${BOT_INFO.name} v${BOT_INFO.version}` })
+        .setTimestamp();
+
+    channel.send({ embeds: [embed] });
 });
 
 kazagumo.on('playerEmpty', (player) => {
     const channel = client.channels.cache.get(player.textId);
     if (channel) {
-        channel.send('⏹️ Queue selesai! Bot disconnect.');
+        const embed = new EmbedBuilder()
+            .setColor('#ff6b6b')
+            .setDescription('⏹️ Queue finished. Disconnecting...')
+            .setTimestamp();
+        channel.send({ embeds: [embed] });
     }
     player.destroy();
 });
@@ -122,7 +106,7 @@ kazagumo.on('playerError', (player, error) => {
     console.error('Player error:', error);
     const channel = client.channels.cache.get(player.textId);
     if (channel) {
-        channel.send('❌ Terjadi error saat memutar lagu. Skipping...');
+        channel.send({ embeds: [errorEmbed('Failed to play track. Skipping...')] });
     }
 });
 
@@ -131,120 +115,46 @@ client.once('ready', () => {
     console.log(`🤖 ${client.user.tag} is online!`);
     console.log(`📊 Serving ${client.guilds.cache.size} servers`);
     
-    client.user.setActivity('🎵 !help', { type: 2 }); // "Listening to !help"
+    client.user.setActivity('!help • Music Bot', { type: 2 });
 });
 
 // ============ HELPER FUNCTIONS ============
 function formatDuration(ms) {
-    if (!ms || ms === 0) return 'Live 🔴';
-    const seconds = Math.floor((ms / 1000) % 60);
-    const minutes = Math.floor((ms / (1000 * 60)) % 60);
-    const hours = Math.floor(ms / (1000 * 60 * 60));
-    
-    if (hours > 0) {
-        return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    if (!ms || ms === 0) return '🔴 Live';
+    const s = Math.floor((ms / 1000) % 60);
+    const m = Math.floor((ms / (1000 * 60)) % 60);
+    const h = Math.floor(ms / (1000 * 60 * 60));
+    return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` : `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ============ PRESETS & FILTERS ============
-const bassLevels = {
-    off: Array(15).fill(0).map((_, i) => ({ band: i, gain: 0 })),
-    low: [
-        { band: 0, gain: 0.1 },
-        { band: 1, gain: 0.1 },
-        { band: 2, gain: 0.05 },
-        { band: 3, gain: 0.05 },
-        ...Array(11).fill(0).map((_, i) => ({ band: i + 4, gain: 0 }))
-    ],
-    medium: [
-        { band: 0, gain: 0.2 },
-        { band: 1, gain: 0.15 },
-        { band: 2, gain: 0.1 },
-        { band: 3, gain: 0.05 },
-        ...Array(11).fill(0).map((_, i) => ({ band: i + 4, gain: 0 }))
-    ],
-    high: [
-        { band: 0, gain: 0.35 },
-        { band: 1, gain: 0.3 },
-        { band: 2, gain: 0.2 },
-        { band: 3, gain: 0.15 },
-        { band: 4, gain: 0.1 },
-        ...Array(10).fill(0).map((_, i) => ({ band: i + 5, gain: 0 }))
-    ]
-};
+function errorEmbed(message) {
+    return new EmbedBuilder().setColor('#ff6b6b').setDescription(`❌ ${message}`);
+}
 
-const audioPresets = {
-    clear: [
-        { band: 0, gain: 0 },
-        { band: 1, gain: 0 },
-        { band: 2, gain: 0 },
-        { band: 3, gain: 0.1 },
-        { band: 4, gain: 0.15 },
-        { band: 5, gain: 0.15 },
-        { band: 6, gain: 0.1 },
-        { band: 7, gain: 0.05 },
-        { band: 8, gain: 0 },
-        { band: 9, gain: 0 },
-        { band: 10, gain: 0 },
-        { band: 11, gain: 0 },
-        { band: 12, gain: 0 },
-        { band: 13, gain: 0 },
-        { band: 14, gain: 0 }
-    ],
-    vocal: [
-        { band: 0, gain: -0.1 },
-        { band: 1, gain: -0.05 },
-        { band: 2, gain: 0.1 },
-        { band: 3, gain: 0.2 },
-        { band: 4, gain: 0.2 },
-        { band: 5, gain: 0.15 },
-        { band: 6, gain: 0.1 },
-        { band: 7, gain: 0 },
-        { band: 8, gain: -0.05 },
-        { band: 9, gain: -0.1 },
-        { band: 10, gain: -0.1 },
-        { band: 11, gain: -0.1 },
-        { band: 12, gain: -0.1 },
-        { band: 13, gain: -0.1 },
-        { band: 14, gain: -0.1 }
-    ],
-    boost: [
-        { band: 0, gain: 0.15 },
-        { band: 1, gain: 0.1 },
-        { band: 2, gain: 0.1 },
-        { band: 3, gain: 0.1 },
-        { band: 4, gain: 0.1 },
-        { band: 5, gain: 0.1 },
-        { band: 6, gain: 0.1 },
-        { band: 7, gain: 0.1 },
-        { band: 8, gain: 0.1 },
-        { band: 9, gain: 0.1 },
-        { band: 10, gain: 0.1 },
-        { band: 11, gain: 0.15 },
-        { band: 12, gain: 0.15 },
-        { band: 13, gain: 0.2 },
-        { band: 14, gain: 0.2 }
-    ],
-    flat: Array(15).fill(0).map((_, i) => ({ band: i, gain: 0 }))
-};
+function successEmbed(message) {
+    return new EmbedBuilder().setColor(BOT_INFO.color).setDescription(message);
+}
 
 // ============ MESSAGE COMMANDS ============
 client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.content.startsWith('!')) return;
+    if (message.author.bot) return;
+    if (!message.content.startsWith('!')) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
+    const validCommands = ['play', 'p', 'skip', 's', 'stop', 'pause', 'resume', 'queue', 'q', 'nowplaying', 'np', 'loop', 'volume', 'vol', 'seek', '8d', 'help', 'info', 'ping'];
+    if (!validCommands.includes(command)) return;
+
     // ==================== PLAY ====================
     if (command === 'play' || command === 'p') {
         if (!message.member.voice.channel) {
-            return message.reply('❌ Join voice channel dulu!');
+            return message.reply({ embeds: [errorEmbed('Join a voice channel first!')] });
         }
 
         const query = args.join(' ');
         if (!query) {
-            return message.reply('❌ Kasih judul lagu! Contoh: `!play never gonna give you up`');
+            return message.reply({ embeds: [errorEmbed('Please provide a song name or URL!\n`!play <song name/url>`')] });
         }
 
         try {
@@ -261,110 +171,97 @@ client.on('messageCreate', async (message) => {
                 });
             }
 
-            message.channel.send(`🔍 Searching: **${query}**...`);
-
             const result = await kazagumo.search(query, { requester: message.author });
 
             if (!result || !result.tracks.length) {
-                return message.reply('❌ Lagu tidak ditemukan!');
+                return message.reply({ embeds: [errorEmbed('No results found!')] });
             }
 
             if (result.type === 'PLAYLIST') {
                 for (const track of result.tracks) {
                     player.queue.add(track);
                 }
-                message.channel.send(`📃 Ditambahkan **${result.tracks.length} lagu** dari playlist: **${result.playlistName}**`);
+                const embed = new EmbedBuilder()
+                    .setColor(BOT_INFO.color)
+                    .setDescription(`📃 Added **${result.tracks.length}** tracks from **${result.playlistName}**`);
+                message.channel.send({ embeds: [embed] });
             } else {
                 player.queue.add(result.tracks[0]);
                 if (player.playing || player.paused) {
-                    message.channel.send(`➕ Ditambahkan ke queue: **${result.tracks[0].title}**`);
+                    const embed = new EmbedBuilder()
+                        .setColor(BOT_INFO.color)
+                        .setDescription(`➕ Added to queue: **${result.tracks[0].title}**`);
+                    message.channel.send({ embeds: [embed] });
                 }
             }
 
-            if (!player.playing && !player.paused) {
-                player.play();
-            }
+            if (!player.playing && !player.paused) player.play();
 
         } catch (error) {
             console.error('Play error:', error);
-            message.reply('❌ Error saat memutar lagu! Coba lagi.');
+            message.reply({ embeds: [errorEmbed('An error occurred!')] });
         }
     }
 
     // ==================== SKIP ====================
     if (command === 'skip' || command === 's') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-        if (!player.queue.current) return message.reply('❌ Tidak ada lagu yang bisa di-skip!');
+        if (!player?.queue.current) return message.reply({ embeds: [errorEmbed('Nothing to skip!')] });
 
         player.skip();
-        message.channel.send('⏭️ Skipped!');
+        message.react('⏭️');
     }
 
     // ==================== STOP ====================
-    if (command === 'stop' || command === 'dc' || command === 'disconnect' || command === 'leave') {
+    if (command === 'stop') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         player.destroy();
-        message.channel.send('⏹️ Stopped & Disconnected!');
+        message.react('⏹️');
     }
 
-    // ==================== PAUSE / RESUME ====================
+    // ==================== PAUSE ====================
     if (command === 'pause') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        if (player.paused) {
-            return message.reply('⏸️ Musik sudah di-pause! Gunakan `!resume` untuk melanjutkan.');
-        }
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         player.pause(true);
-        message.channel.send('⏸️ Paused!');
+        message.react('⏸️');
     }
 
-    if (command === 'resume' || command === 'unpause') {
+    // ==================== RESUME ====================
+    if (command === 'resume') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        if (!player.paused) {
-            return message.reply('▶️ Musik tidak sedang di-pause!');
-        }
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         player.pause(false);
-        message.channel.send('▶️ Resumed!');
+        message.react('▶️');
     }
 
     // ==================== QUEUE ====================
     if (command === 'queue' || command === 'q') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player || !player.queue.current) {
-            return message.reply('❌ Queue kosong!');
-        }
+        if (!player?.queue.current) return message.reply({ embeds: [errorEmbed('Queue is empty!')] });
 
         const current = player.queue.current;
         const queue = player.queue;
 
-        let description = `**Now Playing:**\n🎵 [${current.title}](${current.uri}) - \`${formatDuration(current.length)}\`\n\n`;
+        let description = `**Now Playing:**\n[${current.title}](${current.uri}) • \`${formatDuration(current.length)}\`\n\n`;
 
         if (queue.length > 0) {
             description += `**Up Next:**\n`;
-            const tracks = queue.slice(0, 10);
-            tracks.forEach((track, index) => {
-                description += `\`${index + 1}.\` [${track.title}](${track.uri}) - \`${formatDuration(track.length)}\`\n`;
+            queue.slice(0, 10).forEach((track, i) => {
+                description += `\`${i + 1}.\` [${track.title}](${track.uri}) • \`${formatDuration(track.length)}\`\n`;
             });
-
-            if (queue.length > 10) {
-                description += `\n...dan **${queue.length - 10}** lagu lainnya`;
-            }
+            if (queue.length > 10) description += `\n*...and ${queue.length - 10} more*`;
         }
 
         const embed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setTitle(`📃 Queue - ${message.guild.name}`)
+            .setColor(BOT_INFO.color)
+            .setAuthor({ name: `Queue • ${message.guild.name}`, iconURL: message.guild.iconURL() })
             .setDescription(description)
-            .setFooter({ text: `Total: ${queue.length + 1} lagu | Volume: ${player.volume}%` })
-            .setTimestamp();
+            .setFooter({ text: `${queue.length + 1} tracks • Volume: ${player.volume}%` });
 
         message.channel.send({ embeds: [embed] });
     }
@@ -372,300 +269,154 @@ client.on('messageCreate', async (message) => {
     // ==================== NOW PLAYING ====================
     if (command === 'nowplaying' || command === 'np') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player || !player.queue.current) {
-            return message.reply('❌ Tidak ada lagu yang diputar!');
-        }
+        if (!player?.queue.current) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         const current = player.queue.current;
         const position = player.position;
         const duration = current.length;
 
-        // Progress bar
-        const progress = duration ? Math.round((position / duration) * 20) : 0;
-        const progressBar = '▬'.repeat(progress) + '🔘' + '▬'.repeat(20 - progress);
+        const progress = duration ? Math.round((position / duration) * 15) : 0;
+        const bar = '▬'.repeat(progress) + '🔘' + '▬'.repeat(15 - progress);
 
         const embed = new EmbedBuilder()
-            .setColor('#00ff00')
-            .setTitle('🎵 Now Playing')
-            .setDescription(`**[${current.title}](${current.uri})**`)
+            .setColor(BOT_INFO.color)
+            .setAuthor({ name: 'Now Playing', iconURL: client.user.displayAvatarURL() })
+            .setTitle(current.title)
+            .setURL(current.uri)
+            .setThumbnail(current.thumbnail)
             .addFields(
-                { name: '👤 Author', value: current.author || 'Unknown', inline: true },
-                { name: '🎧 Requested by', value: `${current.requester}`, inline: true },
-                { name: '🔊 Volume', value: `${player.volume}%`, inline: true }
+                { name: 'Author', value: current.author || 'Unknown', inline: true },
+                { name: 'Requested by', value: `${current.requester}`, inline: true },
+                { name: 'Volume', value: `${player.volume}%`, inline: true }
             )
-            .setThumbnail(current.thumbnail || null)
-            .setFooter({ text: `${formatDuration(position)} ${progressBar} ${formatDuration(duration)}` })
-            .setTimestamp();
+            .setDescription(`\`${formatDuration(position)}\` ${bar} \`${formatDuration(duration)}\``)
+            .setFooter({ text: `Loop: ${player.loop || 'Off'}` });
 
         message.channel.send({ embeds: [embed] });
     }
 
-    // ==================== VOLUME ====================
-    if (command === 'volume' || command === 'vol' || command === 'v') {
+    // ==================== LOOP ====================
+    if (command === 'loop') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
+
+        const mode = args[0]?.toLowerCase();
+        if (!mode || !['track', 'queue', 'off'].includes(mode)) {
+            return message.reply({ embeds: [errorEmbed('Usage: `!loop <track/queue/off>`')] });
+        }
+
+        player.setLoop(mode === 'off' ? 'none' : mode);
+        
+        const icons = { track: '🔂', queue: '🔁', off: '➡️' };
+        message.channel.send({ embeds: [successEmbed(`${icons[mode]} Loop: **${mode.charAt(0).toUpperCase() + mode.slice(1)}**`)] });
+    }
+
+    // ==================== VOLUME ====================
+    if (command === 'volume' || command === 'vol') {
+        const player = kazagumo.players.get(message.guild.id);
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         if (!args[0]) {
-            return message.reply(`🔊 Volume saat ini: **${player.volume}%**`);
+            return message.channel.send({ embeds: [successEmbed(`🔊 Current volume: **${player.volume}%**`)] });
         }
 
         const volume = parseInt(args[0]);
         if (isNaN(volume) || volume < 0 || volume > 100) {
-            return message.reply('❌ Volume harus antara **0-100**!');
+            return message.reply({ embeds: [errorEmbed('Volume must be between 0-100')] });
         }
 
         player.setVolume(volume);
-        
-        let emoji = '🔊';
-        if (volume === 0) emoji = '🔇';
-        else if (volume < 30) emoji = '🔈';
-        else if (volume < 70) emoji = '🔉';
-
-        message.channel.send(`${emoji} Volume: **${volume}%**`);
-    }
-
-    // ==================== SHUFFLE ====================
-    if (command === 'shuffle') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-        if (player.queue.length < 2) return message.reply('❌ Butuh minimal 2 lagu di queue!');
-
-        player.queue.shuffle();
-        message.channel.send('🔀 Queue telah di-shuffle!');
-    }
-
-    // ==================== LOOP ====================
-    if (command === 'loop' || command === 'repeat') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        const mode = args[0]?.toLowerCase();
-
-        if (!mode) {
-            const currentLoop = player.loop || 'none';
-            return message.reply(`🔁 Loop saat ini: **${currentLoop}**\nGunakan: \`!loop track\`, \`!loop queue\`, atau \`!loop off\``);
-        }
-
-        if (mode === 'track' || mode === 'song' || mode === 'current') {
-            player.setLoop('track');
-            message.channel.send('🔂 Loop: **Track** (lagu ini akan diulang)');
-        } else if (mode === 'queue' || mode === 'all') {
-            player.setLoop('queue');
-            message.channel.send('🔁 Loop: **Queue** (semua lagu akan diulang)');
-        } else if (mode === 'off' || mode === 'none' || mode === 'disable') {
-            player.setLoop('none');
-            message.channel.send('➡️ Loop: **Off**');
-        } else {
-            message.reply('❌ Mode tidak valid! Gunakan: `track`, `queue`, atau `off`');
-        }
-    }
-
-    // ==================== REMOVE ====================
-    if (command === 'remove' || command === 'rm') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        const index = parseInt(args[0]) - 1;
-        if (isNaN(index) || index < 0 || index >= player.queue.length) {
-            return message.reply(`❌ Index tidak valid! Gunakan angka 1-${player.queue.length}`);
-        }
-
-        const removed = player.queue.splice(index, 1);
-        message.channel.send(`🗑️ Dihapus: **${removed[0].title}**`);
-    }
-
-    // ==================== CLEAR QUEUE ====================
-    if (command === 'clear') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-        if (player.queue.length === 0) return message.reply('❌ Queue sudah kosong!');
-
-        player.queue.clear();
-        message.channel.send('🗑️ Queue telah dikosongkan!');
+        const icon = volume === 0 ? '🔇' : volume < 50 ? '🔉' : '🔊';
+        message.channel.send({ embeds: [successEmbed(`${icon} Volume: **${volume}%**`)] });
     }
 
     // ==================== SEEK ====================
     if (command === 'seek') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player || !player.queue.current) return message.reply('❌ Tidak ada musik!');
+        if (!player?.queue.current) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
         const time = args[0];
-        if (!time) return message.reply('❌ Masukkan waktu! Contoh: `!seek 1:30` atau `!seek 90`');
+        if (!time) return message.reply({ embeds: [errorEmbed('Usage: `!seek <1:30>` or `!seek <90>`')] });
 
-        let seekTime;
+        let ms;
         if (time.includes(':')) {
             const parts = time.split(':').map(Number);
-            if (parts.length === 2) {
-                seekTime = (parts[0] * 60 + parts[1]) * 1000;
-            } else if (parts.length === 3) {
-                seekTime = (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
-            }
+            ms = parts.length === 2 ? (parts[0] * 60 + parts[1]) * 1000 : (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
         } else {
-            seekTime = parseInt(time) * 1000;
+            ms = parseInt(time) * 1000;
         }
 
-        if (isNaN(seekTime) || seekTime < 0 || seekTime > player.queue.current.length) {
-            return message.reply('❌ Waktu tidak valid!');
+        if (isNaN(ms) || ms < 0 || ms > player.queue.current.length) {
+            return message.reply({ embeds: [errorEmbed('Invalid time!')] });
         }
 
-        player.seek(seekTime);
-        message.channel.send(`⏩ Seeking ke: **${formatDuration(seekTime)}**`);
+        player.seek(ms);
+        message.channel.send({ embeds: [successEmbed(`⏩ Seeked to **${formatDuration(ms)}**`)] });
     }
 
-    // ==================== BASS BOOST ====================
-    if (command === 'bassboost' || command === 'bass' || command === 'bb') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        const level = args[0]?.toLowerCase() || 'medium';
-
-        if (!bassLevels[level]) {
-            return message.reply('❌ Level tidak valid! Gunakan: `off`, `low`, `medium`, `high`');
-        }
-
-        player.setEqualizer(bassLevels[level]);
-        
-        const emojis = { off: '🔇', low: '🔈', medium: '🔉', high: '🔊' };
-        message.channel.send(`${emojis[level]} Bass Boost: **${level.toUpperCase()}**`);
-    }
-
-    // ==================== PRESET ====================
-    if (command === 'preset' || command === 'eq') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        const preset = args[0]?.toLowerCase();
-
-        if (!preset) {
-            return message.reply('🎵 Preset tersedia: `clear`, `vocal`, `boost`, `flat`\nContoh: `!preset clear`');
-        }
-
-        if (!audioPresets[preset]) {
-            return message.reply('❌ Preset tidak valid! Gunakan: `clear`, `vocal`, `boost`, `flat`');
-        }
-
-        player.setEqualizer(audioPresets[preset]);
-        message.channel.send(`🎵 Preset: **${preset.toUpperCase()}** aktif!`);
-    }
-
-    // ==================== NIGHTCORE ====================
-    if (command === 'nightcore' || command === 'nc') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setTimescale({ speed: 1.25, pitch: 1.25, rate: 1 });
-        message.channel.send('🌙 **Nightcore** mode: ON');
-    }
-
-    // ==================== SLOWED ====================
-    if (command === 'slowed' || command === 'slow') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setTimescale({ speed: 0.8, pitch: 0.85, rate: 1 });
-        message.channel.send('🎵 **Slowed** mode: ON');
-    }
-
-    // ==================== 8D AUDIO ====================
+    // ==================== 8D ====================
     if (command === '8d') {
         const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
+        if (!player) return message.reply({ embeds: [errorEmbed('Nothing is playing!')] });
 
-        player.setRotation({ rotationHz: 0.2 });
-        message.channel.send('🎧 **8D Audio** mode: ON (Pakai headphone!)');
+        const isEnabled = player.rotation?.rotationHz;
+        if (isEnabled) {
+            player.setRotation({ rotationHz: 0 });
+            message.channel.send({ embeds: [successEmbed('🎧 8D Audio: **Off**')] });
+        } else {
+            player.setRotation({ rotationHz: 0.2 });
+            message.channel.send({ embeds: [successEmbed('🎧 8D Audio: **On** (Use headphones!)')] });
+        }
     }
 
-    // ==================== VAPORWAVE ====================
-    if (command === 'vaporwave' || command === 'vw') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setTimescale({ speed: 0.85, pitch: 0.8, rate: 1 });
-        player.setEqualizer(bassLevels.low);
-        message.channel.send('🌴 **Vaporwave** mode: ON');
-    }
-
-    // ==================== KARAOKE ====================
-    if (command === 'karaoke') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setKaraoke({ level: 1, monoLevel: 1, filterBand: 220, filterWidth: 100 });
-        message.channel.send('🎤 **Karaoke** mode: ON (vocal dikurangi)');
-    }
-
-    // ==================== TREMOLO ====================
-    if (command === 'tremolo') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setTremolo({ frequency: 4, depth: 0.75 });
-        message.channel.send('〰️ **Tremolo** effect: ON');
-    }
-
-    // ==================== VIBRATO ====================
-    if (command === 'vibrato') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.setVibrato({ frequency: 4, depth: 0.75 });
-        message.channel.send('🎸 **Vibrato** effect: ON');
-    }
-
-    // ==================== CLEAR FILTERS ====================
-    if (command === 'clearfilter' || command === 'cf' || command === 'reset') {
-        const player = kazagumo.players.get(message.guild.id);
-        if (!player) return message.reply('❌ Tidak ada musik!');
-
-        player.clearFilters();
-        message.channel.send('✨ Semua filter telah direset!');
-    }
-
-    // ==================== FILTERS LIST ====================
-    if (command === 'filters') {
+    // ==================== HELP ====================
+    if (command === 'help') {
         const embed = new EmbedBuilder()
-            .setColor('#ff00ff')
-            .setTitle('🎛️ Available Filters')
-            .setDescription('Gunakan command berikut untuk mengubah audio:')
+            .setColor(BOT_INFO.color)
+            .setAuthor({ name: BOT_INFO.name, iconURL: client.user.displayAvatarURL() })
+            .setDescription(BOT_INFO.description)
             .addFields(
-                { name: '🎵 Presets', value: '`!preset clear` - Suara jernih\n`!preset vocal` - Vocal jelas\n`!preset boost` - Boost semua\n`!preset flat` - Default', inline: true },
-                { name: '🔊 Bass', value: '`!bass off`\n`!bass low`\n`!bass medium`\n`!bass high`', inline: true },
-                { name: '🎧 Effects', value: '`!nightcore` - Cepat & tinggi\n`!slowed` - Lambat\n`!8d` - 8D rotating\n`!vaporwave` - Aesthetic', inline: true },
-                { name: '🎤 Vocal', value: '`!karaoke` - Kurangi vocal\n`!tremolo` - Tremolo\n`!vibrato` - Vibrato', inline: true },
-                { name: '🔄 Reset', value: '`!clearfilter` - Reset semua', inline: true }
+                {
+                    name: '🎵 Music',
+                    value: '```\n!play <song>  - Play a song\n!skip         - Skip current\n!stop         - Stop & leave\n!pause        - Pause\n!resume       - Resume\n```',
+                    inline: false
+                },
+                {
+                    name: '📋 Queue',
+                    value: '```\n!queue        - View queue\n!nowplaying   - Current song\n!loop <mode>  - track/queue/off\n```',
+                    inline: false
+                },
+                {
+                    name: '🎛️ Control',
+                    value: '```\n!volume <0-100> - Set volume\n!seek <1:30>    - Seek to time\n!8d             - Toggle 8D\n```',
+                    inline: false
+                }
             )
+            .setFooter({ text: `Made by ${BOT_INFO.owner.display} • v${BOT_INFO.version}` })
             .setTimestamp();
 
         message.channel.send({ embeds: [embed] });
     }
 
-    // ==================== HELP ====================
-    if (command === 'help' || command === 'h') {
+    // ==================== INFO ====================
+    if (command === 'info') {
+        const uptime = process.uptime();
+        const hours = Math.floor(uptime / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+
         const embed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setTitle('🎵 Music Bot Commands')
-            .setDescription('Prefix: `!`')
+            .setColor(BOT_INFO.color)
+            .setAuthor({ name: BOT_INFO.name, iconURL: client.user.displayAvatarURL() })
+            .setDescription(BOT_INFO.description)
             .addFields(
-                { 
-                    name: '🎶 Music', 
-                    value: '`play` `skip` `stop` `pause` `resume`\n`queue` `nowplaying` `shuffle` `loop`', 
-                    inline: true 
-                },
-                { 
-                    name: '🔧 Control', 
-                    value: '`volume` `seek` `remove` `clear`', 
-                    inline: true 
-                },
-                { 
-                    name: '🎛️ Filters', 
-                    value: '`bass` `preset` `nightcore` `slowed`\n`8d` `vaporwave` `karaoke` `clearfilter`\n\nKetik `!filters` untuk detail', 
-                    inline: true 
-                }
+                { name: '👨‍💻 Developer', value: `<@${BOT_INFO.owner.id}>`, inline: true },
+                { name: '📊 Servers', value: `${client.guilds.cache.size}`, inline: true },
+                { name: '⏱️ Uptime', value: `${hours}h ${minutes}m`, inline: true },
+                { name: '🏷️ Version', value: BOT_INFO.version, inline: true },
+                { name: '📚 Library', value: 'Discord.js v14', inline: true },
+                { name: '🎵 Audio', value: 'Lavalink v4', inline: true }
             )
-            .addFields(
-                { name: '📋 Command Details', value: '`!play <lagu>` - Putar lagu dari YouTube\n`!volume <0-100>` - Atur volume (recommended: 70)\n`!loop <track/queue/off>` - Atur loop\n`!seek <1:30>` - Skip ke waktu tertentu\n`!preset clear` - Suara paling jernih ⭐' }
-            )
-            .setFooter({ text: 'Tip: Gunakan !preset clear dan !volume 70 untuk suara terbaik!' })
+            .setFooter({ text: `Requested by ${message.author.tag}` })
             .setTimestamp();
 
         message.channel.send({ embeds: [embed] });
@@ -673,11 +424,12 @@ client.on('messageCreate', async (message) => {
 
     // ==================== PING ====================
     if (command === 'ping') {
-        const msg = await message.reply('🏓 Pinging...');
-        const latency = msg.createdTimestamp - message.createdTimestamp;
-        const apiLatency = Math.round(client.ws.ping);
-        
-        msg.edit(`🏓 Pong!\n📡 Latency: **${latency}ms**\n💓 API: **${apiLatency}ms**`);
+        const latency = Date.now() - message.createdTimestamp;
+        const embed = new EmbedBuilder()
+            .setColor(BOT_INFO.color)
+            .setDescription(`🏓 **Pong!**\n📡 Latency: \`${latency}ms\`\n💓 API: \`${Math.round(client.ws.ping)}ms\``);
+
+        message.channel.send({ embeds: [embed] });
     }
 });
 
