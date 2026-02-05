@@ -42,12 +42,14 @@ const client = new Client({
 
 // ============ LAVALINK NODES ============
 const Nodes = [
+    // 🌟 PRIMARY - Your Own Lavalink Server
     {
-        name: 'Render-Primary',
-        url: 'lavalink-q7yu.onrender.com:443',
-        auth: 'ToingDc',
+        name: 'Melodify-Primary',
+        url: 'lavalink-sf9r.onrender.com:443',
+        auth: process.env.LAVALINK_PASSWORD || 'your_super_strong_password_here',
         secure: true
     },
+    // 📦 BACKUP 1 - Render
     {
         name: 'Serenetia-Backup',
         url: 'lavalinkv4.serenetia.com:443',
@@ -67,13 +69,34 @@ const kazagumo = new Kazagumo(
     },
     new Connectors.DiscordJS(client),
     Nodes,
-    { moveOnDisconnect: false, resumable: false, reconnectTries: 3, restTimeout: 15000 }
+    { 
+        moveOnDisconnect: false, 
+        resumable: false, 
+        reconnectTries: 5,        // Increased retry
+        restTimeout: 30000        // 30 seconds timeout
+    }
 );
 
 // ============ LAVALINK EVENTS ============
-kazagumo.shoukaku.on('ready', (name) => console.log(`✅ Lavalink ${name} connected!`));
-kazagumo.shoukaku.on('error', (name, error) => console.error(`❌ Lavalink ${name} error:`, error));
-kazagumo.shoukaku.on('disconnect', (name, reason) => console.warn(`⚠️ Lavalink ${name} disconnected:`, reason));
+kazagumo.shoukaku.on('ready', (name) => {
+    console.log(`✅ Lavalink [${name}] connected!`);
+});
+
+kazagumo.shoukaku.on('error', (name, error) => {
+    console.error(`❌ Lavalink [${name}] error:`, error.message);
+});
+
+kazagumo.shoukaku.on('close', (name, code, reason) => {
+    console.warn(`⚠️ Lavalink [${name}] closed: Code ${code} - ${reason || 'No reason'}`);
+});
+
+kazagumo.shoukaku.on('disconnect', (name, reason) => {
+    console.warn(`⚠️ Lavalink [${name}] disconnected:`, reason || 'Unknown reason');
+});
+
+kazagumo.shoukaku.on('reconnecting', (name, reconnectsLeft, reconnectInterval) => {
+    console.log(`🔄 Lavalink [${name}] reconnecting... (${reconnectsLeft} tries left)`);
+});
 
 // ============ PLAYER EVENTS ============
 kazagumo.on('playerStart', (player, track) => {
@@ -207,7 +230,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error('Play error:', error);
-            message.reply({ embeds: [errorEmbed('An error occurred!')] });
+            message.reply({ embeds: [errorEmbed('An error occurred! Try again later.')] });
         }
     }
 
@@ -383,22 +406,26 @@ client.on('messageCreate', async (message) => {
         let description = '';
 
         nodesInfo.forEach((node, name) => {
-            const status = node.state === 2 ? '🟢 Connected' : '🔴 Disconnected';
+            const stateNames = ['CONNECTING', 'NEARLY', 'CONNECTED', 'RECONNECTING', 'DISCONNECTING', 'DISCONNECTED'];
+            const stateEmoji = node.state === 2 ? '🟢' : node.state === 0 ? '🟡' : '🔴';
+            const status = `${stateEmoji} ${stateNames[node.state] || 'UNKNOWN'}`;
             const stats = node.stats;
+            
             description += `**${name}**\n`;
-            description += `Status: ${status}\n`;
+            description += `└ Status: ${status}\n`;
             if (stats) {
-                description += `Players: ${stats.players} | Playing: ${stats.playingPlayers}\n`;
-                description += `Uptime: ${formatDuration(stats.uptime)}\n`;
+                description += `└ Players: ${stats.players} | Playing: ${stats.playingPlayers}\n`;
+                description += `└ Memory: ${Math.round(stats.memory.used / 1024 / 1024)}MB / ${Math.round(stats.memory.reservable / 1024 / 1024)}MB\n`;
+                description += `└ Uptime: ${formatDuration(stats.uptime)}\n`;
             }
             description += `\n`;
         });
 
         const embed = new EmbedBuilder()
             .setColor(BOT_INFO.color)
-            .setAuthor({ name: 'Lavalink Nodes Status', iconURL: client.user.displayAvatarURL() })
+            .setAuthor({ name: '🎵 Lavalink Nodes Status', iconURL: client.user.displayAvatarURL() })
             .setDescription(description || 'No nodes available')
-            .setFooter({ text: `Total Nodes: ${nodesInfo.size}` })
+            .setFooter({ text: `Total Nodes: ${nodesInfo.size} • ${BOT_INFO.name}` })
             .setTimestamp();
 
         message.channel.send({ embeds: [embed] });
@@ -444,6 +471,9 @@ client.on('messageCreate', async (message) => {
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
 
+        // Get active node info
+        const activeNodes = Array.from(kazagumo.shoukaku.nodes.values()).filter(n => n.state === 2);
+
         const embed = new EmbedBuilder()
             .setColor(BOT_INFO.color)
             .setAuthor({ name: BOT_INFO.name, iconURL: client.user.displayAvatarURL() })
@@ -454,7 +484,7 @@ client.on('messageCreate', async (message) => {
                 { name: '⏱️ Uptime', value: `${hours}h ${minutes}m`, inline: true },
                 { name: '🏷️ Version', value: BOT_INFO.version, inline: true },
                 { name: '📚 Library', value: 'Discord.js v14', inline: true },
-                { name: '🎵 Audio', value: 'Lavalink v4', inline: true }
+                { name: '🎵 Lavalink', value: `${activeNodes.length}/${Nodes.length} nodes`, inline: true }
             )
             .setFooter({ text: `Requested by ${message.author.tag}` })
             .setTimestamp();
@@ -465,13 +495,30 @@ client.on('messageCreate', async (message) => {
     // ==================== PING ====================
     if (command === 'ping') {
         const latency = Date.now() - message.createdTimestamp;
+        
+        // Check lavalink node ping
+        const nodes = kazagumo.shoukaku.nodes;
+        let nodeStatus = '';
+        nodes.forEach((node, name) => {
+            const emoji = node.state === 2 ? '🟢' : '🔴';
+            nodeStatus += `${emoji} ${name}\n`;
+        });
+
         const embed = new EmbedBuilder()
             .setColor(BOT_INFO.color)
-            .setDescription(`🏓 **Pong!**\n📡 Latency: \`${latency}ms\`\n💓 API: \`${Math.round(client.ws.ping)}ms\``);
+            .setTitle('🏓 Pong!')
+            .addFields(
+                { name: '📡 Bot Latency', value: `\`${latency}ms\``, inline: true },
+                { name: '💓 API Latency', value: `\`${Math.round(client.ws.ping)}ms\``, inline: true },
+                { name: '🎵 Lavalink Nodes', value: nodeStatus || 'No nodes', inline: false }
+            );
 
         message.channel.send({ embeds: [embed] });
     }
 });
+
+// ============ RAW EVENT FOR VOICE ============
+client.on('raw', (d) => kazagumo.shoukaku.send(d));
 
 // ============ LOGIN ============
 client.login(process.env.DISCORD_TOKEN);
